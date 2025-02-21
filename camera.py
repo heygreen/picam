@@ -15,9 +15,20 @@ os.makedirs(PHOTO_DIR, exist_ok=True)
 
 # Initialize Camera
 camera = Picamera2()
-camera.configure(camera.create_still_configuration())
+camera.configure(camera.create_still_configuration(main={"size": (2592, 1944)}))
 camera.start()
 time.sleep(1)  # Give the camera time to initialize
+
+camera.set_controls({
+    "AwbMode": "auto",           
+    "ExposureTime": 10000,       
+    "AnalogueGain": 1.5,         
+    "Sharpness": 1.5,            
+    "Contrast": 1.2,             
+    "Brightness": 0.5,           
+    "Saturation": 1.2,           
+    "NoiseReductionMode": "high_quality"  
+})
 
 def get_next_filename():
     """Find the next available filename."""
@@ -32,7 +43,7 @@ def take_photo():
     """Capture a photo and save it with a unique name."""
     filename = get_next_filename()
     try:
-        camera.capture_file(filename)
+        camera.capture_file(filename, quality=100)
         print(f"📸 Photo saved as: {filename}")
 
         # Upload to Immich
