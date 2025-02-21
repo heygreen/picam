@@ -32,7 +32,7 @@ def take_photo():
     """Capture a photo and save it with a unique name."""
     filename = get_next_filename()
     try:
-        camera.capture_file(filename, quality=100)
+        camera.capture_file(filename)
         print(f"📸 Photo saved as: {filename}")
 
         # Upload to Immich
