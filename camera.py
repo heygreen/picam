@@ -129,5 +129,11 @@ def index():
 #def download():
 #    return send_from_directory(PHOTO_DIR, "image.jpg", as_attachment=True)
 
+
+@app.route('/shutdown', methods=['POST'])
+def shutdown():
+    os.system('sudo shutdown -h now')
+    return "Shutting down...", 200
+
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5000, debug=True)
