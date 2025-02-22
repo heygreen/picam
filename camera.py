@@ -1,3 +1,4 @@
+import threading
 import RPi.GPIO as GPIO
 from flask import Flask, render_template, send_from_directory
 import time
@@ -104,31 +105,30 @@ def button_callback(channel):
     take_photo()
     time.sleep(0.2)  # Short debounce delay
 
-print("🔴 Ready! Press the button to take a photo...")
-
 # Detect button press
 GPIO.add_event_detect(BUTTON_PIN, GPIO.FALLING, callback=button_callback, bouncetime=300)
 
-try:
-    while True:
-        time.sleep(1)  # Keep the script running
-except KeyboardInterrupt:
-    print("\n🛑 Exiting program...")
-finally:
-    GPIO.cleanup()
-    camera.stop()
-    print("✅ Cleanup done.")
+def run_gpio_loop():
+    """Runs the GPIO button loop in a separate thread."""
+    print("🔴 Ready! Press the button to take a photo...")
+    try:
+        while True:
+            time.sleep(1)  # Keep the script running for button detection
+    except KeyboardInterrupt:
+        print("\n🛑 Exiting program...")
+    finally:
+        GPIO.cleanup()
+        camera.stop()
+        print("✅ Cleanup done.")
 
+# Start GPIO loop in a separate thread
+gpio_thread = threading.Thread(target=run_gpio_loop, daemon=True)
+gpio_thread.start()
 
 @app.route('/')
 def index():
     battery = read_battery_status()
     return render_template('index.html', battery=battery)
-
-#@app.route('/download')
-#def download():
-#    return send_from_directory(PHOTO_DIR, "image.jpg", as_attachment=True)
-
 
 @app.route('/shutdown', methods=['POST'])
 def shutdown():
@@ -136,4 +136,4 @@ def shutdown():
     return "Shutting down...", 200
 
 if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=5000, debug=True)
+    app.run(host='0.0.0.0', port=8080, debug=True)
