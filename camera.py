@@ -9,6 +9,7 @@ import immich_upload as immich_upload
 
 # Setup
 GPIO.setmode(GPIO.BCM)
+GPIO.cleanup()
 BUTTON_PIN = 17
 GPIO.setup(BUTTON_PIN, GPIO.IN, pull_up_down=GPIO.PUD_UP)
 app = Flask(__name__)
