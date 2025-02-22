@@ -4,7 +4,7 @@ import time
 from picamera2 import Picamera2
 import smbus
 import os
-import lib.immich_upload as immich_upload
+import immich_upload as immich_upload
 
 # Setup
 GPIO.setmode(GPIO.BCM)
