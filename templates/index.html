@@ -1,0 +1,32 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>PiCam</title>
+    <link
+      rel="stylesheet"
+      href="https://cdn.jsdelivr.net/npm/@picocss/pico@2/css/pico.min.css"
+    />
+  </head>
+  <body>
+    <header class="container">
+      <nav>
+        <h1>PiCam</h1>
+      </nav>
+    </header>
+    <hr />
+    <main class="container">
+      <div>
+        <h2>Battery Status</h2>
+        {% if battery.error %}
+        <p style="color: red">Error: {{ battery.error }}</p>
+        {% else %}
+        <p>Voltage: {{ battery.voltage }}V</p>
+        <p>Capacity: {{ battery.capacity }}%</p>
+        {% endif %}
+      </div>
+      <button>Take a picture</button>
+    </main>
+  </body>
+</html>
