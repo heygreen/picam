@@ -1,18 +1,21 @@
-import threading
 import RPi.GPIO as GPIO
 from flask import Flask, render_template, send_from_directory
 import time
+import threading
 from picamera2 import Picamera2
 import smbus
 import os
-import immich_upload as immich_upload
+import immich_upload
 
-# Setup
+# Setup GPIO
 GPIO.setmode(GPIO.BCM)
 BUTTON_PIN = 17
 GPIO.setup(BUTTON_PIN, GPIO.IN, pull_up_down=GPIO.PUD_UP)
+
+# Flask App Setup
 app = Flask(__name__)
 
+# Battery Monitoring Setup
 class INA219:
     def __init__(self, i2c_bus=1, addr=0x43):
         self.bus = smbus.SMBus(i2c_bus)
@@ -47,7 +50,12 @@ class INA219:
             value -= 65535
         return value * self._power_lsb
 
+# Global Battery Status
+battery_status = {"voltage": 0, "current": 0, "power": 0, "capacity": 0}
+
 def read_battery_status():
+    """Reads battery status and updates global variable."""
+    global battery_status
     try:
         ina219 = INA219()
         bus_voltage = ina219.get_bus_voltage()
@@ -56,16 +64,24 @@ def read_battery_status():
         percent = (bus_voltage - 3) / 1.2 * 100
         percent = max(0, min(100, percent))
 
-        return {
+        battery_status = {
             "voltage": round(bus_voltage, 2),
             "current": round(current_mA / 1000, 3),
             "power": round(power_W, 3),
             "capacity": round(percent, 1)
         }
-    except OSError as e:
-        return {"error": f"I2C error: {e}"}
     except Exception as e:
-        return {"error": f"Unexpected error: {e}"}
+        battery_status = {"error": f"Battery read error: {e}"}
+
+def battery_monitor():
+    """Runs battery readings in a background thread."""
+    while True:
+        read_battery_status()
+        time.sleep(5)  # Update every 5 seconds
+
+# Start Battery Monitoring Thread
+battery_thread = threading.Thread(target=battery_monitor, daemon=True)
+battery_thread.start()
 
 # Ensure the photos directory exists
 PHOTO_DIR = "./photos"
@@ -75,10 +91,10 @@ os.makedirs(PHOTO_DIR, exist_ok=True)
 camera = Picamera2()
 camera.configure(camera.create_still_configuration(main={"size": (2592, 1944)}))
 camera.start(show_preview=False)
-time.sleep(1)  # Give the camera time to initialize
+time.sleep(1)  # Allow camera to initialize
 
 def get_next_filename():
-    """Find the next available filename."""
+    """Finds the next available filename."""
     i = 1
     while True:
         filename = os.path.join(PHOTO_DIR, f"photo_{i}.jpg")
@@ -87,7 +103,7 @@ def get_next_filename():
         i += 1
 
 def take_photo():
-    """Capture a photo and save it with a unique name."""
+    """Captures a photo and uploads it."""
     filename = get_next_filename()
     try:
         camera.capture_file(filename)
@@ -100,40 +116,40 @@ def take_photo():
         print(f"❌ Error capturing or uploading image: {e}")
 
 def button_callback(channel):
-    """Callback for when the button is pressed."""
+    """Handles button press event."""
     print("📸 Button Pressed! Taking a photo...")
     take_photo()
     time.sleep(0.2)  # Short debounce delay
 
+print("🔴 Ready! Press the button to take a photo...")
+
 # Detect button press
 GPIO.add_event_detect(BUTTON_PIN, GPIO.FALLING, callback=button_callback, bouncetime=300)
 
-def run_gpio_loop():
-    """Runs the GPIO button loop in a separate thread."""
-    print("🔴 Ready! Press the button to take a photo...")
-    try:
-        while True:
-            time.sleep(1)  # Keep the script running for button detection
-    except KeyboardInterrupt:
-        print("\n🛑 Exiting program...")
-    finally:
-        GPIO.cleanup()
-        camera.stop()
-        print("✅ Cleanup done.")
-
-# Start GPIO loop in a separate thread
-gpio_thread = threading.Thread(target=run_gpio_loop, daemon=True)
-gpio_thread.start()
-
 @app.route('/')
 def index():
-    battery = read_battery_status()
-    return render_template('index.html', battery=battery)
+    return render_template('index.html', battery=battery_status)
 
 @app.route('/shutdown', methods=['POST'])
 def shutdown():
     os.system('sudo shutdown -h now')
     return "Shutting down...", 200
 
-if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=8080, debug=True)
+def run_flask():
+    """Runs the Flask web server in a separate thread."""
+    app.run(host='0.0.0.0', port=8080, debug=True, use_reloader=False)
+
+# Start Flask in a Separate Thread
+flask_thread = threading.Thread(target=run_flask, daemon=True)
+flask_thread.start()
+
+# Keep the script running
+try:
+    while True:
+        time.sleep(1)
+except KeyboardInterrupt:
+    print("\n🛑 Exiting program...")
+finally:
+    GPIO.cleanup()
+    camera.stop()
+    print("✅ Cleanup done.")
