@@ -143,6 +143,13 @@ def take_photo():
 
 def button_callback(channel):
     """Handles button press event."""
+    start_time = time.time()
+    while GPIO.input(BUTTON_PIN) == 0:
+        time.sleep(0.1)
+        if time.time() - start_time > 3:
+            print("🛑 Long press detected! Shutting down...")
+            os.system("sudo shutdown -h now")
+            return
     print("📸 Button Pressed! Taking a photo...")
     take_photo()
     time.sleep(0.2)  # Short debounce delay
@@ -165,14 +172,12 @@ if check_internet():
         """Runs the Flask web server in a separate thread."""
         app.run(host='0.0.0.0', port=8080, debug=True, use_reloader=False)
 
-    # Start Flask in a Separate Thread
     flask_thread = threading.Thread(target=run_flask, daemon=True)
     flask_thread.start()
     print("🌍 Internet detected. Web server started.")
 else:
     print("⚠️ No internet connection. Web server will not start.")
 
-# Keep the script running
 try:
     while True:
         time.sleep(1)
