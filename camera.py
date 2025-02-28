@@ -6,6 +6,8 @@ from picamera2 import Picamera2
 import smbus
 import os
 import immich_upload
+import requests
+from datetime import datetime
 
 # Setup GPIO
 GPIO.setmode(GPIO.BCM)
@@ -83,9 +85,19 @@ def battery_monitor():
 battery_thread = threading.Thread(target=battery_monitor, daemon=True)
 battery_thread.start()
 
-# Ensure the photos directory exists
+# Ensure directories exist
 PHOTO_DIR = "./photos"
+FAILED_UPLOADS_DIR = "./failed_uploads"
 os.makedirs(PHOTO_DIR, exist_ok=True)
+os.makedirs(FAILED_UPLOADS_DIR, exist_ok=True)
+
+def check_internet():
+    """Checks if the device has an active internet connection."""
+    try:
+        requests.get("https://www.google.com", timeout=3)
+        return True
+    except requests.RequestException:
+        return False
 
 # Initialize Camera
 camera = Picamera2()
@@ -93,27 +105,41 @@ camera.configure(camera.create_still_configuration(main={"size": (2592, 1944)}))
 camera.start(show_preview=False)
 time.sleep(1)  # Allow camera to initialize
 
-def get_next_filename():
-    """Finds the next available filename."""
-    i = 1
-    while True:
-        filename = os.path.join(PHOTO_DIR, f"photo_{i}.jpg")
-        if not os.path.exists(filename):
-            return filename
-        i += 1
+def get_timestamp_filename():
+    """Generates a unique filename using the current date and time."""
+    return datetime.now().strftime("%Y%m%d_%H%M%S") + ".jpg"
+
+def upload_failed_images():
+    """Attempts to upload previously failed images."""
+    if check_internet():
+        for filename in os.listdir(FAILED_UPLOADS_DIR):
+            filepath = os.path.join(FAILED_UPLOADS_DIR, filename)
+            try:
+                immich_upload.upload(filepath)
+                print(f"✅ Successfully uploaded: {filename}")
+                os.rename(filepath, os.path.join(PHOTO_DIR, filename))
+            except Exception as e:
+                print(f"❌ Failed to upload {filename}: {e}")
 
 def take_photo():
-    """Captures a photo and uploads it."""
-    filename = get_next_filename()
+    """Captures a photo and attempts to upload it."""
+    filename = get_timestamp_filename()
+    photo_path = os.path.join(PHOTO_DIR, filename)
     try:
-        camera.capture_file(filename)
-        print(f"📸 Photo saved as: {filename}")
+        camera.capture_file(photo_path)
+        print(f"📸 Photo saved as: {photo_path}")
 
-        # Upload to Immich
-        immich_upload.upload(filename)
-        print("✅ Upload successful")
+        # Attempt to upload
+        if check_internet():
+            immich_upload.upload(photo_path)
+            print("✅ Upload successful")
+        else:
+            raise Exception("No internet connection")
     except Exception as e:
-        print(f"❌ Error capturing or uploading image: {e}")
+        print(f"❌ Upload failed: {e}")
+        failed_photo_path = os.path.join(FAILED_UPLOADS_DIR, filename)
+        os.rename(photo_path, failed_photo_path)
+        print(f"💾 Saved for later upload: {failed_photo_path}")
 
 def button_callback(channel):
     """Handles button press event."""
@@ -121,27 +147,30 @@ def button_callback(channel):
     take_photo()
     time.sleep(0.2)  # Short debounce delay
 
-print("🔴 Ready! Press the button to take a photo...")
-
 # Detect button press
 GPIO.add_event_detect(BUTTON_PIN, GPIO.FALLING, callback=button_callback, bouncetime=300)
 
-@app.route('/')
-def index():
-    return render_template('index.html', battery=battery_status)
+if check_internet():
+    upload_failed_images()
+    @app.route('/')
+    def index():
+        return render_template('index.html', battery=battery_status)
 
-@app.route('/shutdown', methods=['POST'])
-def shutdown():
-    os.system('sudo shutdown -h now')
-    return "Shutting down...", 200
+    @app.route('/shutdown', methods=['POST'])
+    def shutdown():
+        os.system('sudo shutdown -h now')
+        return "Shutting down...", 200
 
-def run_flask():
-    """Runs the Flask web server in a separate thread."""
-    app.run(host='0.0.0.0', port=8080, debug=True, use_reloader=False)
+    def run_flask():
+        """Runs the Flask web server in a separate thread."""
+        app.run(host='0.0.0.0', port=8080, debug=True, use_reloader=False)
 
-# Start Flask in a Separate Thread
-flask_thread = threading.Thread(target=run_flask, daemon=True)
-flask_thread.start()
+    # Start Flask in a Separate Thread
+    flask_thread = threading.Thread(target=run_flask, daemon=True)
+    flask_thread.start()
+    print("🌍 Internet detected. Web server started.")
+else:
+    print("⚠️ No internet connection. Web server will not start.")
 
 # Keep the script running
 try:
