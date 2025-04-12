@@ -8,7 +8,11 @@ import os
 import requests
 from datetime import datetime
 import logging
+from flask import jsonify
 from PIL import Image
+from flask import send_file
+import zipfile
+import io
 
 # Logging Setup
 logging.basicConfig(
@@ -166,6 +170,37 @@ def serve_photo(filename):
 @app.route('/thumbs/<path:filename>')
 def serve_thumbnail(filename):
     return send_from_directory(THUMB_DIR, filename)
+
+@app.route('/take-photo', methods=['POST'])
+def take_photo_route():
+    try:
+        take_photo()
+        return jsonify({"status": "success"}), 200
+    except Exception as e:
+        logging.error(f"Web photo capture failed: {e}")
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+@app.route('/download-selected', methods=['POST'])
+def download_selected():
+    from flask import request
+    selected_files = request.form.getlist('selected')
+    if not selected_files:
+        return "No files selected.", 400
+
+    zip_buffer = io.BytesIO()
+    with zipfile.ZipFile(zip_buffer, 'w') as zip_file:
+        for filename in selected_files:
+            file_path = os.path.join(PHOTO_DIR, filename)
+            if os.path.isfile(file_path):
+                zip_file.write(file_path, arcname=filename)
+
+    zip_buffer.seek(0)
+    return send_file(
+        zip_buffer,
+        mimetype='application/zip',
+        as_attachment=True,
+        download_name='selected_photos.zip'
+    )
 
 @app.route('/shutdown', methods=['POST'])
 def shutdown():
