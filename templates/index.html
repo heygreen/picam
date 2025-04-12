@@ -43,7 +43,7 @@
           {% for image in images %}
           <div style="text-align: center;">
             <a href="{{ url_for('serve_photo', filename=image) }}" data-lightbox="gallery">
-              <img src="{{ url_for('serve_thumbnail', filename=img) }}" loading="lazy" style="height: 160px; margin: 8px;" />            </a><br>
+              <img src="{{ url_for('serve_thumbnail', filename=image) }}" loading="lazy" style="height: 160px; margin: 8px;" />            </a><br>
             <input type="checkbox" name="selected" value="{{ image }}"> Select
             <a href="{{ url_for('serve_photo', filename=image) }}" download>⬇️</a>
           </div>
