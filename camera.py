@@ -191,7 +191,7 @@ def shutdown():
     return "Shutting down...", 200
 
 def run_flask():
-    app.run(host='0.0.0.0', port=80, debug=True, use_reloader=False)
+    app.run(host='0.0.0.0', port=8080, debug=False)
 
 if check_internet():
     flask_thread = threading.Thread(target=run_flask, daemon=True)
