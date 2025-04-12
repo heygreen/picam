@@ -8,10 +8,7 @@ import os
 import requests
 from datetime import datetime
 import logging
-from flask import send_file
-import zipfile
-import io
-from flask import jsonify
+from PIL import Image
 
 # Logging Setup
 logging.basicConfig(
@@ -103,8 +100,17 @@ battery_thread.start()
 
 # Ensure directories exist
 PHOTO_DIR = "./photos"
+THUMB_DIR = os.path.join(PHOTO_DIR, "thumbs")
 os.makedirs(PHOTO_DIR, exist_ok=True)
+os.makedirs(THUMB_DIR, exist_ok=True)
 
+def create_thumbnail(photo_path, thumbnail_path, size=(320, 240)):
+    try:
+        with Image.open(photo_path) as img:
+            img.thumbnail(size)
+            img.save(thumbnail_path)
+    except Exception as e:
+        logging.error(f"Thumbnail creation failed: {e}")
 
 def check_internet():
     try:
@@ -125,9 +131,11 @@ def get_timestamp_filename():
 def take_photo():
     filename = get_timestamp_filename()
     photo_path = os.path.join(PHOTO_DIR, filename)
+    thumb_path = os.path.join(THUMB_DIR, filename)
     try:
         camera.capture_file(photo_path)
         logging.info(f"Photo taken and saved: {photo_path}")
+        create_thumbnail(photo_path, thumb_path)
     except Exception as e:
         logging.error(f"Photo capture failed: {e}")
 
@@ -147,43 +155,17 @@ GPIO.add_event_detect(BUTTON_PIN, GPIO.FALLING, callback=button_callback, bounce
 
 @app.route('/')
 def index():
-    image_filenames = sorted(os.listdir(PHOTO_DIR), reverse=True)
+    image_filenames = sorted(os.listdir(PHOTO_DIR))
+    image_filenames = [f for f in image_filenames if f.endswith('.jpg') and not f.startswith("thumbs")]
     return render_template('index.html', battery=battery_status, images=image_filenames)
 
 @app.route('/photos/<path:filename>')
 def serve_photo(filename):
     return send_from_directory(PHOTO_DIR, filename)
 
-@app.route('/download-selected', methods=['POST'])
-def download_selected():
-    from flask import request
-    selected_files = request.form.getlist('selected')
-    if not selected_files:
-        return "No files selected.", 400
-
-    zip_buffer = io.BytesIO()
-    with zipfile.ZipFile(zip_buffer, 'w') as zip_file:
-        for filename in selected_files:
-            file_path = os.path.join(PHOTO_DIR, filename)
-            if os.path.isfile(file_path):
-                zip_file.write(file_path, arcname=filename)
-
-    zip_buffer.seek(0)
-    return send_file(
-        zip_buffer,
-        mimetype='application/zip',
-        as_attachment=True,
-        download_name='selected_photos.zip'
-    )
-
-@app.route('/take-photo', methods=['POST'])
-def take_photo_route():
-    try:
-        take_photo()
-        return jsonify({"status": "success"}), 200
-    except Exception as e:
-        logging.error(f"Web photo capture failed: {e}")
-        return jsonify({"status": "error", "message": str(e)}), 500
+@app.route('/thumbs/<path:filename>')
+def serve_thumbnail(filename):
+    return send_from_directory(THUMB_DIR, filename)
 
 @app.route('/shutdown', methods=['POST'])
 def shutdown():
